@@ -131,16 +131,6 @@ def capture_image_from_camera(output_path, timeout=5):
     Tries picamera (legacy), picamera2 (libcamera) and OpenCV (v4l2) in that
     order. Raises an exception if no method succeeds.
     """
-    # Try legacy picamera (Raspberry Pi OS with raspicam support)
-    try:
-        import picamera
-        with picamera.PiCamera() as cam:
-            cam.resolution = (224, 224)
-            time.sleep(1)
-            cam.capture(output_path, format='jpeg')
-        return
-    except Exception:
-        pass
 
     # Try picamera2 (newer Raspberry Pi OS with libcamera)
     try:
@@ -200,8 +190,8 @@ def log_scan_result(plant, prediction, confidence, ph, temp, sun):
     except Exception as e:
         print(f"🛑 ERROR: Could not log data to CSV: {e}")
 
-MODEL_PATH = "data/teachable_machine_model/keras_model.h5"
-LABELS_PATH = "data/teachable_machine_model/labels.txt"
+MODEL_PATH = "data/keras_model.h5"
+LABELS_PATH = "data/labels.txt"
 PLANT_IMAGE_PATH = "data/test_image.jpg"
 
 def run_nxplorer_scan(plant_type, ph_level, temp_celsius, sunlight_hours):

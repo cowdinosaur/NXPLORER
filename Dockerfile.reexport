@@ -1,0 +1,20 @@
+# Minimal Dockerfile to re-export a legacy Keras HDF5 using TensorFlow 2.4.0
+FROM python:3.8-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --upgrade pip
+RUN pip install tensorflow==2.4.0 h5py==2.10.0 numpy pillow
+
+WORKDIR /workspace
+
+# Copy only the scripts (model data will be mounted at runtime)
+COPY scripts /workspace/scripts
+
+ENTRYPOINT ["python", "scripts/reexport.py"]
