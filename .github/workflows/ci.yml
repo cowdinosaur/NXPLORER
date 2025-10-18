@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Create venv
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+      - name: Install dependencies
+        run: |
+          . .venv/bin/activate
+          pip install -r requirements.txt
+      - name: Create dummy model
+        run: |
+          . .venv/bin/activate
+          python scripts/create_dummy_model.py
+      - name: Run tests
+        run: |
+          . .venv/bin/activate
+          python -m pytest -q
+      - name: Validate model
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_model.py
