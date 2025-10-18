@@ -5,6 +5,7 @@ import tensorflow as tf
 import numpy as np
 import datetime
 import csv
+import time
 
 def load_model(model_path, labels_path):
     """Loads the Keras model and the class labels."""
@@ -123,6 +124,63 @@ def print_header(title):
     print(f"  {title.upper()}  ")
     print(f"{border}\n")
 
+
+def capture_image_from_camera(output_path, timeout=5):
+    """Attempt to capture an image from an attached camera and save to output_path.
+
+    Tries picamera (legacy), picamera2 (libcamera) and OpenCV (v4l2) in that
+    order. Raises an exception if no method succeeds.
+    """
+    # Try legacy picamera (Raspberry Pi OS with raspicam support)
+    try:
+        import picamera
+        with picamera.PiCamera() as cam:
+            cam.resolution = (224, 224)
+            time.sleep(1)
+            cam.capture(output_path, format='jpeg')
+        return
+    except Exception:
+        pass
+
+    # Try picamera2 (newer Raspberry Pi OS with libcamera)
+    try:
+        from picamera2 import Picamera2
+        picam2 = Picamera2()
+        try:
+            # Start the camera, capture to a file, then stop.
+            picam2.start()
+            # Small warm-up
+            time.sleep(0.5)
+            picam2.capture_file(output_path)
+        finally:
+            try:
+                picam2.stop()
+                picam2.close()
+            except Exception:
+                pass
+        return
+    except Exception:
+        pass
+
+    # Try OpenCV as a final fallback (works with v4l2 devices)
+    try:
+        import cv2
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            raise RuntimeError("Could not open video device")
+        # Warm up
+        time.sleep(0.5)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            raise RuntimeError("Failed to capture frame from camera")
+        # OpenCV uses BGR ordering; writing directly is fine for JPEG.
+        cv2.imwrite(output_path, frame)
+        return
+    except Exception:
+        pass
+
+    raise RuntimeError("No camera capture method succeeded (picamera, picamera2, cv2)")
 def log_scan_result(plant, prediction, confidence, ph, temp, sun):
     log_dir = "data"
     file_name = os.path.join(log_dir, "scan_history.csv")
@@ -154,6 +212,20 @@ def run_nxplorer_scan(plant_type, ph_level, temp_celsius, sunlight_hours):
     except FileNotFoundError:
         print("🛑 ERROR: AI model files not found. Ensure 'keras_model.h5' and 'labels.txt' are correctly placed in the 'data' directory.")
         return
+    # Optionally capture an image from a Raspberry Pi camera (or any camera
+    # exposed as /dev/video via v4l2). To enable, set the environment var
+    # USE_CAMERA=1 before running. The captured image will be written to
+    # `PLANT_IMAGE_PATH` and then used for classification. If capture fails
+    # we fall back to the existing image file behavior.
+    use_camera = os.getenv('USE_CAMERA') == '1'
+    if use_camera:
+        print("[CAMERA] USE_CAMERA=1 detected. Attempting to capture image from camera...")
+        try:
+            capture_image_from_camera(PLANT_IMAGE_PATH)
+            print(f"[CAMERA] Captured image to {PLANT_IMAGE_PATH}")
+        except Exception as e:
+            print(f"⚠️ WARNING: Camera capture failed: {e}. Falling back to existing image file.")
+
     print(f"[AI] Running image classification on {PLANT_IMAGE_PATH}...")
     try:
         if not os.path.exists(PLANT_IMAGE_PATH):

@@ -1,3 +1,0 @@
-0 healthy radish
-1 unhealthy radish
-2 irrelevant data 
