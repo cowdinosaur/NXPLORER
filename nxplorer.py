@@ -8,18 +8,55 @@ import csv
 import time
 
 def load_model(model_path, labels_path):
-    """Loads the Keras model and the class labels."""
+    """Loads the SavedModel (preferred) or Keras model and the class labels."""
     # Read labels robustly first (we need the count for a fallback model).
     with open(labels_path, 'r') as f:
         labels = [line.strip().split()[-1] for line in f.readlines() if line.strip()]
 
-    # Try loading the model normally. If deserialization fails due to
-    # incompatibilities between Keras/TensorFlow versions (common with
-    # HDF5 legacy exports), try a compatibility shim. If that also fails,
-    # fall back to a tiny model with the correct number of outputs so the
-    # rest of the scanning pipeline can continue in degraded mode.
+    # PREFER SavedModel format (most stable and compatible)
+    savedmodel_path = model_path.replace('.h5', '.savedmodel')
+    if os.path.exists(savedmodel_path):
+        print("[AI] Using SavedModel format (recommended)...")
+        try:
+            model = tf.saved_model.load(savedmodel_path)
+            print("[AI] ✓ SavedModel loaded successfully!")
+
+            # Create a wrapper that mimics Keras model interface
+            class SavedModelWrapper:
+                def __init__(self, saved_model):
+                    self.saved_model = saved_model
+                    self.input_shape = (None, 224, 224, 3)
+
+                    # Get the serving signature for faster access
+                    self.infer = self.saved_model.signatures['serving_default']
+
+                    # Discover input and output tensor names
+                    input_names = list(self.infer.structured_input_signature[1].keys())
+                    output_names = list(self.infer.structured_outputs.keys())
+
+                    self.input_name = input_names[0] if input_names else None
+                    self.output_name = output_names[0] if output_names else None
+
+                    print(f"[AI] Input tensor: {self.input_name}")
+                    print(f"[AI] Output tensor: {self.output_name}")
+
+                def predict(self, data, verbose=0):
+                    # Use the specific tensor names we discovered
+                    inputs = {self.input_name: tf.constant(data, dtype=tf.float32)}
+                    result = self.infer(**inputs)
+                    return result[self.output_name].numpy()
+
+            return SavedModelWrapper(model), labels
+
+        except Exception as e:
+            print(f"❌ SavedModel loading failed: {e}")
+            print("[AI] Falling back to HDF5 format...")
+
+    # FALLBACK: Try HDF5 format (less compatible)
+    print("[AI] Attempting HDF5 format loading...")
     try:
         model = tf.keras.models.load_model(model_path, compile=False)
+        print("[AI] ✓ HDF5 model loaded successfully!")
         return model, labels
     except Exception:
         # Provide a compatibility shim for DepthwiseConv2D that ignores
@@ -36,11 +73,12 @@ def load_model(model_path, labels_path):
                 compile=False,
                 custom_objects={'DepthwiseConv2D': DepthwiseConv2DCompat},
             )
+            print("[AI] ✓ HDF5 model loaded with compatibility shim!")
             return model, labels
         except Exception as e:
             # Last resort: build a tiny fallback model that accepts the
             # expected input shape and produces `len(labels)` softmax outputs.
-            print("⚠️ WARNING: Could not load the provided HDF5 model. Using a fallback dummy model for inference.")
+            print("⚠️ WARNING: Could not load the provided model. Using a fallback dummy model for inference.")
             num_classes = len(labels) or 2
             fallback = tf.keras.Sequential([
                 tf.keras.layers.Input(shape=(224, 224, 3)),
