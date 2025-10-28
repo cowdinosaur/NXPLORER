@@ -4,3 +4,16 @@ Timestamp,Plant,AI_Prediction,Confidence,pH,Temperature_C,Sunlight_Hours
 2025-10-18 04:49:44,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
 2025-10-18 04:50:44,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
 2025-10-18 05:06:21,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 13:33:46,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 13:35:57,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 13:37:54,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 14:01:15,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 14:03:11,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 14:04:25,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-18 14:11:13,Tomato,radish,66.73%,5.2,32,7.5
+2025-10-18 14:12:08,Tomato,data,99.91%,5.2,32,7.5
+2025-10-18 14:13:49,Tomato,data,84.41%,5.2,32,7.5
+2025-10-28 17:48:30,Tomato,data,84.41%,5.2,32,7.5
+2025-10-28 17:53:50,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-28 17:56:37,Tomato,N/A - Image Missing,0.00%,5.2,32,7.5
+2025-10-28 18:01:35,Tomato,data,99.97%,5.2,32,7.5

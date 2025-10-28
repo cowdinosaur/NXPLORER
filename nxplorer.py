@@ -172,10 +172,12 @@ def capture_image_from_camera(output_path, timeout=5):
 
     # Try picamera2 (newer Raspberry Pi OS with libcamera)
     try:
-        from picamera2 import Picamera2
+        print("we are trying to capture an image using our camera")
+        from picamera2 import Picamera2, Preview
         picam2 = Picamera2()
         try:
             # Start the camera, capture to a file, then stop.
+            picam2.configure(picam2.create_still_configuration(display="main"))
             picam2.start()
             # Small warm-up
             time.sleep(0.5)
@@ -184,10 +186,12 @@ def capture_image_from_camera(output_path, timeout=5):
             try:
                 picam2.stop()
                 picam2.close()
-            except Exception:
+            except Exception as e:
+                print(e)
                 pass
         return
-    except Exception:
+    except Exception as e:
+        print(e)
         pass
 
     # Try OpenCV as a final fallback (works with v4l2 devices)
