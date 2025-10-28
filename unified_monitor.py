@@ -11,8 +11,14 @@ import time
 import datetime
 import csv
 import argparse
+import logging
 from PIL import Image
 import numpy as np
+
+# Suppress system info messages from camera libraries
+logging.getLogger("picamera2").setLevel(logging.ERROR)
+os.environ["LIBCAMERA_LOG_LEVELS"] = "ERROR"
+os.environ["PICAMERA2_LOG_LEVEL"] = "ERROR"
 
 # Import sensor libraries
 try:
@@ -43,11 +49,12 @@ except ImportError:
     TF_AVAILABLE = False
 
 class UnifiedMonitor:
-    def __init__(self, interval=10, plant_type="Tomato", i2c_port='/dev/i2c-1', use_camera=False):
+    def __init__(self, interval=10, plant_type="Tomato", i2c_port='/dev/i2c-1', use_camera=False, verbose=True):
         self.interval = interval
         self.plant_type = plant_type
         self.i2c_port = i2c_port
         self.use_camera = use_camera
+        self.verbose = verbose
 
         # Initialize sensors
         self.scd30_sensor = None
@@ -68,9 +75,14 @@ class UnifiedMonitor:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
+    def _print(self, message):
+        """Print message only if verbose mode is enabled."""
+        if self.verbose:
+            print(message)
+
     def _setup_sensors(self):
         """Initialize all available sensors."""
-        print("[INIT] Setting up sensors...")
+        self._print("[INIT] Setting up sensors...")
 
         # Setup SCD30 sensor
         if SCD30_AVAILABLE:
@@ -93,17 +105,17 @@ class UnifiedMonitor:
 
                 # Read firmware version
                 major, minor = self.scd30_sensor.read_firmware_version()
-                print(f"[SCD30] Firmware version: {major}.{minor}")
+                self._print(f"[SCD30] Firmware version: {major}.{minor}")
 
                 # Start periodic measurement
                 self.scd30_sensor.start_periodic_measurement(0)
-                print("[SCD30] ✓ CO2/Humidity sensor initialized")
+                self._print("[SCD30] ✓ CO2/Humidity sensor initialized")
 
             except Exception as e:
-                print(f"[SCD30] ❌ Failed to initialize: {e}")
+                self._print(f"[SCD30] ❌ Failed to initialize: {e}")
                 self.scd30_sensor = None
         else:
-            print("[SCD30] ❌ Not available")
+            self._print("[SCD30] ❌ Not available")
 
         # Setup LDR sensor
         if LDR_AVAILABLE:
@@ -112,23 +124,23 @@ class UnifiedMonitor:
                 cs = digitalio.DigitalInOut(board.CE0)
                 mcp = MCP.MCP3008(spi, cs)
                 self.ldr_channel = AnalogIn(mcp, MCP.P0)
-                print("[LDR] ✓ Light sensor initialized")
+                self._print("[LDR] ✓ Light sensor initialized")
             except Exception as e:
-                print(f"[LDR] ❌ Failed to initialize: {e}")
+                self._print(f"[LDR] ❌ Failed to initialize: {e}")
                 self.ldr_channel = None
         else:
-            print("[LDR] ❌ Not available")
+            self._print("[LDR] ❌ Not available")
 
         # Setup AI model for image classification
         if TF_AVAILABLE:
             try:
                 self._load_ai_model()
             except Exception as e:
-                print(f"[AI] ❌ Failed to load model: {e}")
+                self._print(f"[AI] ❌ Failed to load model: {e}")
                 self.model = None
                 self.labels = None
         else:
-            print("[AI] ❌ TensorFlow not available")
+            self._print("[AI] ❌ TensorFlow not available")
 
     def _load_ai_model(self):
         """Load the AI model and labels for image classification."""
@@ -146,21 +158,21 @@ class UnifiedMonitor:
         # Try to load SavedModel format first
         savedmodel_path = model_path.replace('.h5', '.savedmodel')
         if os.path.exists(savedmodel_path):
-            print("[AI] Using SavedModel format...")
+            self._print("[AI] Using SavedModel format...")
             try:
                 model = tf.saved_model.load(savedmodel_path)
                 self.model = SavedModelWrapper(model)
-                print("[AI] ✓ Model loaded successfully")
+                self._print("[AI] ✓ Model loaded successfully")
                 return
             except Exception as e:
-                print(f"[AI] SavedModel failed: {e}")
+                self._print(f"[AI] SavedModel failed: {e}")
 
         # Fallback to HDF5
         try:
             self.model = tf.keras.models.load_model(model_path, compile=False)
-            print("[AI] ✓ HDF5 model loaded successfully")
+            self._print("[AI] ✓ HDF5 model loaded successfully")
         except Exception as e:
-            print(f"[AI] ❌ Could not load model: {e}")
+            self._print(f"[AI] ❌ Could not load model: {e}")
 
     def read_scd30_data(self):
         """Read CO2, temperature, and humidity from SCD30 sensor."""
@@ -171,7 +183,7 @@ class UnifiedMonitor:
             co2_concentration, temperature, humidity = self.scd30_sensor.blocking_read_measurement_data()
             return co2_concentration, temperature, humidity
         except Exception as e:
-            print(f"[SCD30] ❌ Read failed: {e}")
+            self._print(f"[SCD30] ❌ Read failed: {e}")
             return None, None, None
 
     def read_ldr_data(self):
@@ -184,7 +196,7 @@ class UnifiedMonitor:
             volts = self.ldr_channel.voltage
             return raw, volts
         except Exception as e:
-            print(f"[LDR] ❌ Read failed: {e}")
+            self._print(f"[LDR] ❌ Read failed: {e}")
             return None, None
 
     def capture_and_classify_image(self):
@@ -198,9 +210,9 @@ class UnifiedMonitor:
         if self.use_camera:
             try:
                 self._capture_image_from_camera(image_path)
-                print("[CAMERA] ✓ Image captured")
+                self._print("[CAMERA] ✓ Image captured")
             except Exception as e:
-                print(f"[CAMERA] ❌ Capture failed: {e}")
+                self._print(f"[CAMERA] ❌ Capture failed: {e}")
                 # Use existing image if available
 
         # Load and classify image
@@ -213,47 +225,52 @@ class UnifiedMonitor:
             return image_path, confidence, prediction
 
         except Exception as e:
-            print(f"[AI] ❌ Classification failed: {e}")
+            self._print(f"[AI] ❌ Classification failed: {e}")
             return None, None, "N/A - Classification error"
 
     def _capture_image_from_camera(self, output_path):
         """Capture image from camera using multiple methods."""
-        # Try picamera2 first
-        try:
-            from picamera2 import Picamera2
-            picam2 = Picamera2()
+        import contextlib
+        import io
+
+        # Suppress camera library output during capture
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            # Try picamera2 first
             try:
-                picam2.configure(picam2.create_still_configuration(display="main"))
-                picam2.start()
-                time.sleep(0.5)
-                picam2.capture_file(output_path)
-            finally:
+                from picamera2 import Picamera2
+                picam2 = Picamera2()
                 try:
-                    picam2.stop()
-                    picam2.close()
-                except:
-                    pass
-            return
-        except:
-            pass
+                    picam2.configure(picam2.create_still_configuration(display="main"))
+                    picam2.start()
+                    time.sleep(0.5)
+                    picam2.capture_file(output_path)
+                finally:
+                    try:
+                        picam2.stop()
+                        picam2.close()
+                    except:
+                        pass
+                return
+            except:
+                pass
 
-        # Try OpenCV
-        try:
-            import cv2
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                raise RuntimeError("Could not open video device")
-            time.sleep(0.5)
-            ret, frame = cap.read()
-            cap.release()
-            if not ret or frame is None:
-                raise RuntimeError("Failed to capture frame")
-            cv2.imwrite(output_path, frame)
-            return
-        except:
-            pass
+            # Try OpenCV
+            try:
+                import cv2
+                cap = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                    raise RuntimeError("Could not open video device")
+                time.sleep(0.5)
+                ret, frame = cap.read()
+                cap.release()
+                if not ret or frame is None:
+                    raise RuntimeError("Failed to capture frame")
+                cv2.imwrite(output_path, frame)
+                return
+            except:
+                pass
 
-        raise RuntimeError("No camera method succeeded")
+            raise RuntimeError("No camera method succeeded")
 
     def _classify_image(self, image):
         """Classify image using loaded model."""
@@ -301,43 +318,43 @@ class UnifiedMonitor:
     def run_measurement_cycle(self):
         """Run one complete measurement cycle."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"\n{'='*60}")
-        print(f"🌱 UNIFIED MONITORING CYCLE - {timestamp}")
-        print(f"🌱 Plant Type: {self.plant_type}")
-        print(f"{'='*60}")
+        self._print(f"\n{'='*60}")
+        self._print(f"🌱 UNIFIED MONITORING CYCLE - {timestamp}")
+        self._print(f"🌱 Plant Type: {self.plant_type}")
+        self._print(f"{'='*60}")
 
         # Read SCD30 data
-        print("\n[SCD30] Reading CO2/Humidity...")
+        self._print("\n[SCD30] Reading CO2/Humidity...")
         co2, temp, humidity = self.read_scd30_data()
         if co2 is not None:
-            print(f"  ✓ CO2: {co2:.1f} ppm")
-            print(f"  ✓ Temperature: {temp:.1f} °C")
-            print(f"  ✓ Humidity: {humidity:.1f}%")
+            self._print(f"  ✓ CO2: {co2:.1f} ppm")
+            self._print(f"  ✓ Temperature: {temp:.1f} °C")
+            self._print(f"  ✓ Humidity: {humidity:.1f}%")
         else:
-            print("  ❌ Failed to read data")
+            self._print("  ❌ Failed to read data")
 
         # Read LDR data
-        print("\n[LDR] Reading light level...")
+        self._print("\n[LDR] Reading light level...")
         light_raw, light_volts = self.read_ldr_data()
         if light_raw is not None:
-            print(f"  ✓ Light: {light_volts:.3f} V (raw: {light_raw})")
+            self._print(f"  ✓ Light: {light_volts:.3f} V (raw: {light_raw})")
         else:
-            print("  ❌ Failed to read data")
+            self._print("  ❌ Failed to read data")
 
         # Capture and classify image
-        print("\n[AI] Capturing and classifying image...")
+        self._print("\n[AI] Capturing and classifying image...")
         image_path, confidence, prediction = self.capture_and_classify_image()
         if image_path:
-            print(f"  ✓ Image: {image_path}")
-            print(f"  ✓ Prediction: {prediction}")
+            self._print(f"  ✓ Image: {image_path}")
+            self._print(f"  ✓ Prediction: {prediction}")
             if confidence > 0:
-                print(f"  ✓ Confidence: {confidence*100:.2f}%")
+                self._print(f"  ✓ Confidence: {confidence*100:.2f}%")
         else:
-            print("  ❌ Classification failed")
+            self._print("  ❌ Classification failed")
 
         # Log data
         self.log_data(timestamp, co2, temp, humidity, light_raw, light_volts, prediction, confidence)
-        print(f"\n[LOG] ✓ Data logged to {self.log_file}")
+        self._print(f"\n[LOG] ✓ Data logged to {self.log_file}")
 
         # Return measurements for potential use
         return {
@@ -360,6 +377,7 @@ class UnifiedMonitor:
             print(f"🔄 Cycles: {num_cycles}")
         print(f"📷 Camera: {'Enabled' if self.use_camera else 'Disabled'}")
         print(f"📊 Log file: {self.log_file}")
+        print(f"🔇 Verbose: {'Enabled' if self.verbose else 'Disabled (sensor messages only)'}")
 
         cycle_count = 0
         try:
@@ -373,7 +391,8 @@ class UnifiedMonitor:
                 if num_cycles and cycle_count >= num_cycles:
                     break
 
-                print(f"\n⏳ Waiting {self.interval} seconds...")
+                if self.verbose:
+                    print(f"\n⏳ Waiting {self.interval} seconds...")
                 time.sleep(self.interval)
 
         except KeyboardInterrupt:
@@ -411,6 +430,7 @@ def main():
     parser.add_argument('--i2c-port', type=str, default='/dev/i2c-1', help='I2C port for SCD30 (default: /dev/i2c-1)')
     parser.add_argument('--camera', '-c', action='store_true', help='Enable camera capture for image classification')
     parser.add_argument('--cycles', '-n', type=int, help='Number of measurement cycles (default: infinite)')
+    parser.add_argument('--quiet', '-q', action='store_true', help='Quiet mode - suppress sensor info messages (shows only data readings)')
 
     args = parser.parse_args()
 
@@ -418,7 +438,8 @@ def main():
         interval=args.interval,
         plant_type=args.plant,
         i2c_port=args.i2c_port,
-        use_camera=args.camera
+        use_camera=args.camera,
+        verbose=not args.quiet
     )
 
     monitor.run_continuous(num_cycles=args.cycles)
