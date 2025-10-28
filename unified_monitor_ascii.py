@@ -76,14 +76,27 @@ class UnifiedMonitorASCII:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-    def _print(self, message):
-        """Print message only if verbose mode is enabled."""
+    def _print_init(self, message):
+        """Print initialization messages only if verbose mode is enabled."""
         if self.verbose:
             print(message)
 
+    def _print_debug(self, message):
+        """Print debug messages only if verbose mode is enabled."""
+        if self.verbose:
+            print(message)
+
+    def _print_data(self, message):
+        """Print data and sensor readings - always shown regardless of verbose mode."""
+        print(message)
+
+    def _print_header(self, message):
+        """Print important headers - always shown regardless of verbose mode."""
+        print(message)
+
     def _setup_sensors(self):
         """Initialize all available sensors."""
-        self._print("[INIT] Setting up sensors...")
+        self._print_init("[INIT] Setting up sensors...")
 
         # Setup SCD30 sensor
         if SCD30_AVAILABLE:
@@ -106,17 +119,17 @@ class UnifiedMonitorASCII:
 
                 # Read firmware version
                 major, minor = self.scd30_sensor.read_firmware_version()
-                self._print(f"[SCD30] Firmware version: {major}.{minor}")
+                self._print_init(f"[SCD30] Firmware version: {major}.{minor}")
 
                 # Start periodic measurement
                 self.scd30_sensor.start_periodic_measurement(0)
-                self._print("[SCD30] [OK] CO2/Humidity sensor initialized")
+                self._print_init("[SCD30] [OK] CO2/Humidity sensor initialized")
 
             except Exception as e:
-                self._print(f"[SCD30] [ERROR] Failed to initialize: {e}")
+                self._print_init(f"[SCD30] [ERROR] Failed to initialize: {e}")
                 self.scd30_sensor = None
         else:
-            self._print("[SCD30] [ERROR] Not available")
+            self._print_init("[SCD30] [ERROR] Not available")
 
         # Setup LDR sensor
         if LDR_AVAILABLE:
@@ -125,23 +138,23 @@ class UnifiedMonitorASCII:
                 cs = digitalio.DigitalInOut(board.CE0)
                 mcp = MCP.MCP3008(spi, cs)
                 self.ldr_channel = AnalogIn(mcp, MCP.P0)
-                self._print("[LDR] [OK] Light sensor initialized")
+                self._print_init("[LDR] [OK] Light sensor initialized")
             except Exception as e:
-                self._print(f"[LDR] [ERROR] Failed to initialize: {e}")
+                self._print_init(f"[LDR] [ERROR] Failed to initialize: {e}")
                 self.ldr_channel = None
         else:
-            self._print("[LDR] [ERROR] Not available")
+            self._print_init("[LDR] [ERROR] Not available")
 
         # Setup AI model for image classification
         if TF_AVAILABLE:
             try:
                 self._load_ai_model()
             except Exception as e:
-                self._print(f"[AI] [ERROR] Failed to load model: {e}")
+                self._print_init(f"[AI] [ERROR] Failed to load model: {e}")
                 self.model = None
                 self.labels = None
         else:
-            self._print("[AI] [ERROR] TensorFlow not available")
+            self._print_init("[AI] [ERROR] TensorFlow not available")
 
     def _load_ai_model(self):
         """Load the AI model and labels for image classification."""
@@ -159,21 +172,21 @@ class UnifiedMonitorASCII:
         # Try to load SavedModel format first
         savedmodel_path = model_path.replace('.h5', '.savedmodel')
         if os.path.exists(savedmodel_path):
-            self._print("[AI] Using SavedModel format...")
+            self._print_debug("[AI] Using SavedModel format...")
             try:
                 model = tf.saved_model.load(savedmodel_path)
                 self.model = SavedModelWrapper(model)
-                self._print("[AI] [OK] Model loaded successfully")
+                self._print_debug("[AI] [OK] Model loaded successfully")
                 return
             except Exception as e:
-                self._print(f"[AI] SavedModel failed: {e}")
+                self._print_debug(f"[AI] SavedModel failed: {e}")
 
         # Fallback to HDF5
         try:
             self.model = tf.keras.models.load_model(model_path, compile=False)
-            self._print("[AI] [OK] HDF5 model loaded successfully")
+            self._print_debug("[AI] [OK] HDF5 model loaded successfully")
         except Exception as e:
-            self._print(f"[AI] [ERROR] Could not load model: {e}")
+            self._print_debug(f"[AI] [ERROR] Could not load model: {e}")
 
     def read_scd30_data(self):
         """Read CO2, temperature, and humidity from SCD30 sensor."""
@@ -184,7 +197,7 @@ class UnifiedMonitorASCII:
             co2_concentration, temperature, humidity = self.scd30_sensor.blocking_read_measurement_data()
             return co2_concentration, temperature, humidity
         except Exception as e:
-            self._print(f"[SCD30] [ERROR] Read failed: {e}")
+            self._print_debug(f"[SCD30] [ERROR] Read failed: {e}")
             return None, None, None
 
     def read_ldr_data(self):
@@ -197,7 +210,7 @@ class UnifiedMonitorASCII:
             volts = self.ldr_channel.voltage
             return raw, volts
         except Exception as e:
-            self._print(f"[LDR] [ERROR] Read failed: {e}")
+            self._print_debug(f"[LDR] [ERROR] Read failed: {e}")
             return None, None
 
     def capture_and_classify_image(self):
@@ -211,9 +224,9 @@ class UnifiedMonitorASCII:
         if self.use_camera:
             try:
                 self._capture_image_from_camera(image_path)
-                self._print("[CAMERA] [OK] Image captured")
+                self._print_debug("[CAMERA] [OK] Image captured")
             except Exception as e:
-                self._print(f"[CAMERA] [ERROR] Capture failed: {e}")
+                self._print_debug(f"[CAMERA] [ERROR] Capture failed: {e}")
                 # Use existing image if available
 
         # Load and classify image
@@ -226,7 +239,7 @@ class UnifiedMonitorASCII:
             return image_path, confidence, prediction
 
         except Exception as e:
-            self._print(f"[AI] [ERROR] Classification failed: {e}")
+            self._print_debug(f"[AI] [ERROR] Classification failed: {e}")
             return None, None, "N/A - Classification error"
 
     def _capture_image_from_camera(self, output_path):
@@ -319,43 +332,43 @@ class UnifiedMonitorASCII:
     def run_measurement_cycle(self):
         """Run one complete measurement cycle."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self._print(f"\n{'='*60}")
-        self._print(f"[PLANT] UNIFIED MONITORING CYCLE - {timestamp}")
-        self._print(f"[PLANT] Plant Type: {self.plant_type}")
-        self._print(f"{'='*60}")
+        self._print_header(f"\n{'='*60}")
+        self._print_header(f"[PLANT] UNIFIED MONITORING CYCLE - {timestamp}")
+        self._print_header(f"[PLANT] Plant Type: {self.plant_type}")
+        self._print_header(f"{'='*60}")
 
         # Read SCD30 data
-        self._print("\n[SCD30] Reading CO2/Humidity...")
+        self._print_data("\n[SCD30] Reading CO2/Humidity...")
         co2, temp, humidity = self.read_scd30_data()
         if co2 is not None:
-            self._print(f"  [OK] CO2: {co2:.1f} ppm")
-            self._print(f"  [OK] Temperature: {temp:.1f} C")
-            self._print(f"  [OK] Humidity: {humidity:.1f}%")
+            self._print_data(f"  [OK] CO2: {co2:.1f} ppm")
+            self._print_data(f"  [OK] Temperature: {temp:.1f} C")
+            self._print_data(f"  [OK] Humidity: {humidity:.1f}%")
         else:
-            self._print("  [ERROR] Failed to read data")
+            self._print_data("  [ERROR] Failed to read data")
 
         # Read LDR data
-        self._print("\n[LDR] Reading light level...")
+        self._print_data("\n[LDR] Reading light level...")
         light_raw, light_volts = self.read_ldr_data()
         if light_raw is not None:
-            self._print(f"  [OK] Light: {light_volts:.3f} V (raw: {light_raw})")
+            self._print_data(f"  [OK] Light: {light_volts:.3f} V (raw: {light_raw})")
         else:
-            self._print("  [ERROR] Failed to read data")
+            self._print_data("  [ERROR] Failed to read data")
 
         # Capture and classify image
-        self._print("\n[AI] Capturing and classifying image...")
+        self._print_data("\n[AI] Capturing and classifying image...")
         image_path, confidence, prediction = self.capture_and_classify_image()
         if image_path:
-            self._print(f"  [OK] Image: {image_path}")
-            self._print(f"  [OK] Prediction: {prediction}")
+            self._print_data(f"  [OK] Image: {image_path}")
+            self._print_data(f"  [OK] Prediction: {prediction}")
             if confidence > 0:
-                self._print(f"  [OK] Confidence: {confidence*100:.2f}%")
+                self._print_data(f"  [OK] Confidence: {confidence*100:.2f}%")
         else:
-            self._print("  [ERROR] Classification failed")
+            self._print_data("  [ERROR] Classification failed")
 
         # Log data
         self.log_data(timestamp, co2, temp, humidity, light_raw, light_volts, prediction, confidence)
-        self._print(f"\n[LOG] [OK] Data logged to {self.log_file}")
+        self._print_data(f"\n[LOG] [OK] Data logged to {self.log_file}")
 
         # Return measurements for potential use
         return {
@@ -393,7 +406,7 @@ class UnifiedMonitorASCII:
                     break
 
                 if self.verbose:
-                    print(f"\n[WAIT] Waiting {self.interval} seconds...")
+                    self._print_debug(f"\n[WAIT] Waiting {self.interval} seconds...")
                 time.sleep(self.interval)
 
         except KeyboardInterrupt:
