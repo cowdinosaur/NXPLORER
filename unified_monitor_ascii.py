@@ -243,24 +243,23 @@ class UnifiedMonitorASCII:
             return None, None, "N/A - Classification error"
 
     def _capture_image_from_camera(self, output_path):
-        """Capture image from camera using multiple methods."""
+        """Capture image from camera using the exact working method from debug."""
         import contextlib
         import io
 
         # Suppress camera library output during capture
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            # Try picamera2 first (this works for you!)
+            # Use the exact method that works in debug
             try:
                 from picamera2 import Picamera2
                 picam2 = Picamera2()
 
-                # Configure for still capture
-                config = picam2.create_still_configuration(main={"size": (1920, 1080)})
-                picam2.configure(config)
+                # Use default still configuration (this worked in debug)
+                picam2.configure(picam2.create_still_configuration())
 
                 # Start camera
                 picam2.start()
-                time.sleep(1.0)  # Give camera time to warm up
+                time.sleep(1.0)  # Same timing that worked in debug
 
                 # Capture image
                 picam2.capture_file(output_path)
@@ -274,16 +273,34 @@ class UnifiedMonitorASCII:
                 self._print_debug(f"picamera2 failed: {e}")
                 pass
 
-            # Try OpenCV as fallback
+            # Try with specific size as fallback
+            try:
+                from picamera2 import Picamera2
+                picam2 = Picamera2()
+
+                # Try the specific configuration that worked in debug
+                config = picam2.create_still_configuration(main={"size": (1920, 1080)})
+                picam2.configure(config)
+
+                picam2.start()
+                time.sleep(1.0)
+
+                picam2.capture_file(output_path)
+
+                picam2.stop()
+                picam2.close()
+                return
+
+            except Exception as e:
+                self._print_debug(f"picamera2 with specific size failed: {e}")
+                pass
+
+            # Try OpenCV as last resort
             try:
                 import cv2
                 cap = cv2.VideoCapture(0)
                 if not cap.isOpened():
                     raise RuntimeError("Could not open video device")
-
-                # Set camera properties
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
                 time.sleep(0.5)
                 ret, frame = cap.read()
