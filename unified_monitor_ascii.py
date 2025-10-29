@@ -249,39 +249,54 @@ class UnifiedMonitorASCII:
 
         # Suppress camera library output during capture
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            # Try picamera2 first
+            # Try picamera2 first (this works for you!)
             try:
                 from picamera2 import Picamera2
                 picam2 = Picamera2()
-                try:
-                    picam2.configure(picam2.create_still_configuration(display="main"))
-                    picam2.start()
-                    time.sleep(0.5)
-                    picam2.capture_file(output_path)
-                finally:
-                    try:
-                        picam2.stop()
-                        picam2.close()
-                    except:
-                        pass
+
+                # Configure for still capture
+                config = picam2.create_still_configuration(main={"size": (1920, 1080)})
+                picam2.configure(config)
+
+                # Start camera
+                picam2.start()
+                time.sleep(1.0)  # Give camera time to warm up
+
+                # Capture image
+                picam2.capture_file(output_path)
+
+                # Stop camera
+                picam2.stop()
+                picam2.close()
                 return
-            except:
+
+            except Exception as e:
+                self._print_debug(f"picamera2 failed: {e}")
                 pass
 
-            # Try OpenCV
+            # Try OpenCV as fallback
             try:
                 import cv2
                 cap = cv2.VideoCapture(0)
                 if not cap.isOpened():
                     raise RuntimeError("Could not open video device")
+
+                # Set camera properties
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
                 time.sleep(0.5)
                 ret, frame = cap.read()
                 cap.release()
+
                 if not ret or frame is None:
                     raise RuntimeError("Failed to capture frame")
+
                 cv2.imwrite(output_path, frame)
                 return
-            except:
+
+            except Exception as e:
+                self._print_debug(f"OpenCV failed: {e}")
                 pass
 
             raise RuntimeError("No camera method succeeded")
